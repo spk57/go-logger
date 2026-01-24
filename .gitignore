@@ -1,0 +1,13 @@
+# Binary
+logger-server
+
+# Log files
+logger.csv
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
