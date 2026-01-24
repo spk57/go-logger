@@ -204,6 +204,34 @@ func (l *Logger) ClearEntries() error {
 	return nil
 }
 
+// GetLocationForSource retrieves the most recent location for a given source
+// Returns the location value and true if found, empty string and false otherwise
+func (l *Logger) GetLocationForSource(source string) (string, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	entries, err := l.readAllEntries()
+	if err != nil {
+		return "", false
+	}
+
+	// Find the most recent set_location entry for this source
+	var mostRecent *LogEntry
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.Source == source && e.Transaction == "set_location" && e.Name == "location" {
+			if mostRecent == nil || e.CreatedAt.After(mostRecent.CreatedAt) {
+				mostRecent = &e
+			}
+		}
+	}
+
+	if mostRecent != nil {
+		return mostRecent.Value, true
+	}
+	return "", false
+}
+
 // GetStats returns statistics about the log entries
 func (l *Logger) GetStats() (map[string]interface{}, error) {
 	l.mu.RLock()
@@ -357,7 +385,16 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		valueStr = fmt.Sprintf("%v", v)
 	}
 
-	id, err := s.logger.AddEntry(dt, req.Transaction, req.Name, valueStr, req.Source)
+	// Check for set_location transaction for this source
+	// If found, use the location value instead of the reported transaction
+	location, hasLocation := s.logger.GetLocationForSource(req.Source)
+	effectiveTransaction := req.Transaction
+	if hasLocation && req.Transaction != "set_location" {
+		// Use the location value instead of the reported transaction from the device
+		effectiveTransaction = location
+	}
+
+	id, err := s.logger.AddEntry(dt, effectiveTransaction, req.Name, valueStr, req.Source)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -366,11 +403,20 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
-	})
+	}
+
+	// Include original transaction and location info if location was used
+	if hasLocation && req.Transaction != "set_location" {
+		response["location"] = location
+		response["original_transaction"] = req.Transaction
+		response["transaction"] = effectiveTransaction
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) getLogEntries(w http.ResponseWriter, r *http.Request) {
@@ -477,7 +523,16 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.logger.AddEntry(time.Now(), transaction, name, value, source)
+	// Check for set_location transaction for this source
+	// If found, use the location value instead of the reported transaction
+	location, hasLocation := s.logger.GetLocationForSource(source)
+	effectiveTransaction := transaction
+	if hasLocation && transaction != "set_location" {
+		// Use the location value instead of the reported transaction from the device
+		effectiveTransaction = location
+	}
+
+	id, err := s.logger.AddEntry(time.Now(), effectiveTransaction, name, value, source)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -486,11 +541,20 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
-	})
+	}
+
+	// Include original transaction and location info if location was used
+	if hasLocation && transaction != "set_location" {
+		response["location"] = location
+		response["original_transaction"] = transaction
+		response["transaction"] = effectiveTransaction
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

@@ -325,6 +325,256 @@ else
     echo "Response: $RESPONSE"
 fi
 
+# Test 13: Set location for a device
+print_header "Test 13: Set Location Transaction"
+print_test "POST /api/logger - Set location for sensor-03"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:10:00",
+        "transaction": "set_location",
+        "name": "location",
+        "value": "Building A, Room 101",
+        "source": "sensor-03"
+    }')
+
+if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "id"; then
+    LOCATION_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
+    print_success "Location set with ID: $LOCATION_ID"
+    echo "Response: $RESPONSE"
+else
+    print_failure "Failed to set location"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 14: Verify location is used in subsequent log entries
+print_header "Test 14: Location Used in Log Entries"
+print_test "POST /api/logger - Log entry after set_location (should use location as transaction)"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:15:00",
+        "transaction": "logging",
+        "name": "temperature",
+        "value": 22.5,
+        "source": "sensor-03"
+    }')
+
+if check_response "$RESPONSE" "success" "true"; then
+    # Check if location is in the response
+    if echo "$RESPONSE" | grep -q "location" && echo "$RESPONSE" | grep -q "Building A, Room 101"; then
+        print_success "Location included in response"
+    else
+        print_failure "Location not found in response"
+    fi
+    # Check if original_transaction is present
+    if echo "$RESPONSE" | grep -q "original_transaction"; then
+        print_success "Original transaction preserved in response"
+    else
+        print_failure "Original transaction not found in response"
+    fi
+    echo "Response: $RESPONSE"
+    
+    # Verify the entry was stored with location as transaction
+    ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
+    print_test "Verifying stored entry uses location as transaction"
+    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&limit=1")
+    if echo "$RETRIEVE_RESPONSE" | grep -q "Building A, Room 101"; then
+        print_success "Entry stored with location as transaction"
+    else
+        print_failure "Entry not stored with location as transaction"
+        echo "Retrieve response: $RETRIEVE_RESPONSE"
+    fi
+else
+    print_failure "Failed to create log entry with location"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 15: Retrieve location entries
+print_header "Test 15: Retrieve Location Entries"
+print_test "GET /api/logger?source=sensor-03&name=location"
+
+RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=location")
+
+if check_response "$RESPONSE" "success" "true"; then
+    if echo "$RESPONSE" | grep -q "set_location" && echo "$RESPONSE" | grep -q "Building A, Room 101"; then
+        print_success "Location entries retrieved successfully"
+    else
+        print_failure "Location entries not found"
+    fi
+    echo "Response: $RESPONSE"
+else
+    print_failure "Failed to retrieve location entries"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 16: Update location (multiple set_location calls)
+print_header "Test 16: Update Location"
+print_test "POST /api/logger - Update location for sensor-03"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:20:00",
+        "transaction": "set_location",
+        "name": "location",
+        "value": "Building B, Room 205",
+        "source": "sensor-03"
+    }')
+
+if check_response "$RESPONSE" "success" "true"; then
+    print_success "Location updated"
+    echo "Response: $RESPONSE"
+    
+    # Verify new location is used in subsequent entries
+    print_test "POST /api/logger - Log entry after location update (should use new location)"
+    UPDATE_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "datetime": "2025-01-15T11:25:00",
+            "transaction": "logging",
+            "name": "humidity",
+            "value": 65.0,
+            "source": "sensor-03"
+        }')
+    
+    if echo "$UPDATE_RESPONSE" | grep -q "Building B, Room 205"; then
+        print_success "New location used in subsequent entry"
+    else
+        print_failure "New location not used"
+        echo "Response: $UPDATE_RESPONSE"
+    fi
+else
+    print_failure "Failed to update location"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 17: Set location for multiple devices
+print_header "Test 17: Multiple Device Locations"
+print_test "POST /api/logger - Set location for sensor-04"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:30:00",
+        "transaction": "set_location",
+        "name": "location",
+        "value": "Warehouse Zone 3",
+        "source": "sensor-04"
+    }')
+
+if check_response "$RESPONSE" "success" "true"; then
+    print_success "Location set for sensor-04"
+    echo "Response: $RESPONSE"
+    
+    # Create log entry for sensor-04
+    print_test "POST /api/logger - Log entry for sensor-04 (should use its location)"
+    SENSOR4_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "datetime": "2025-01-15T11:35:00",
+            "transaction": "logging",
+            "name": "pressure",
+            "value": 1013.25,
+            "source": "sensor-04"
+        }')
+    
+    if echo "$SENSOR4_RESPONSE" | grep -q "Warehouse Zone 3"; then
+        print_success "Sensor-04 uses its own location"
+    else
+        print_failure "Sensor-04 location not used"
+        echo "Response: $SENSOR4_RESPONSE"
+    fi
+    
+    # Verify sensor-03 still uses its location
+    print_test "POST /api/logger - Log entry for sensor-03 (should still use Building B location)"
+    SENSOR3_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+        -H "Content-Type: application/json" \
+        -d '{
+            "datetime": "2025-01-15T11:36:00",
+            "transaction": "logging",
+            "name": "temperature",
+            "value": 21.0,
+            "source": "sensor-03"
+        }')
+    
+    if echo "$SENSOR3_RESPONSE" | grep -q "Building B, Room 205"; then
+        print_success "Sensor-03 still uses its location (locations are device-specific)"
+    else
+        print_failure "Sensor-03 location incorrect"
+        echo "Response: $SENSOR3_RESPONSE"
+    fi
+else
+    print_failure "Failed to set location for sensor-04"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 18: Device without location uses original transaction
+print_header "Test 18: Device Without Location"
+print_test "POST /api/logger - Log entry for device without set_location"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:40:00",
+        "transaction": "logging",
+        "name": "voltage",
+        "value": 12.5,
+        "source": "sensor-05"
+    }')
+
+if check_response "$RESPONSE" "success" "true"; then
+    # Should not have location field
+    if ! echo "$RESPONSE" | grep -q "location"; then
+        print_success "Device without location uses original transaction (no location field)"
+    else
+        print_failure "Location field present for device without set_location"
+    fi
+    echo "Response: $RESPONSE"
+else
+    print_failure "Failed to create log entry"
+    echo "Response: $RESPONSE"
+fi
+
+# Test 19: set_location transaction itself should not be modified
+print_header "Test 19: Set Location Transaction Preservation"
+print_test "POST /api/logger - set_location transaction should not be modified"
+
+RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "datetime": "2025-01-15T11:45:00",
+        "transaction": "set_location",
+        "name": "location",
+        "value": "Test Location",
+        "source": "sensor-06"
+    }')
+
+if check_response "$RESPONSE" "success" "true"; then
+    # set_location transactions should not have location field in response
+    if ! echo "$RESPONSE" | grep -q "\"location\""; then
+        print_success "set_location transaction preserved (not modified)"
+    else
+        print_failure "set_location transaction was modified"
+    fi
+    echo "Response: $RESPONSE"
+    
+    # Verify stored entry has transaction="set_location"
+    print_test "Verifying stored set_location entry"
+    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-06&name=location")
+    if echo "$RETRIEVE_RESPONSE" | grep -q "set_location"; then
+        print_success "set_location transaction stored correctly"
+    else
+        print_failure "set_location transaction not stored correctly"
+        echo "Retrieve response: $RETRIEVE_RESPONSE"
+    fi
+else
+    print_failure "Failed to create set_location entry"
+    echo "Response: $RESPONSE"
+fi
+
 # Summary
 print_header "Test Summary"
 echo -e "${GREEN}Passed:${NC} $TESTS_PASSED"
