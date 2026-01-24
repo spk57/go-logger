@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Logger API provides endpoints for storing and retrieving time-series log data with metadata. Each log entry contains a timestamp, transaction identifier, name, value, and source identifier.
+The Logger API provides endpoints for storing and retrieving time-series log data with metadata. Each log entry contains a timestamp, transaction identifier, name, value, source identifier, and location. The location field is automatically populated from `set_location` transactions when available.
 
 ## Transaction Types
 
@@ -12,6 +12,20 @@ The API supports different transaction types to categorize log entries:
 - **`set_location`**: Set or update the location for a logging device (see [Device Location Management](#device-location-management))
 
 Transaction types are stored as part of each log entry and can be used to categorize and filter data. The transaction field is optional but recommended for better data organization.
+
+## Location Field
+
+Each log entry includes a `location` field that indicates where the measurement device is located. The location is automatically populated from the most recent `set_location` transaction for that device:
+
+- **Automatic Population**: When a device logs an entry, the system checks for the most recent `set_location` transaction for that device's source identifier
+- **Location Updates**: When you create a new `set_location` transaction, all subsequent entries from that device will use the new location
+- **Empty Location**: If no `set_location` transaction exists for a device, the location field will be an empty string
+- **Storage**: The location is stored in the CSV file and included in all API responses
+
+**Example Flow:**
+1. Set location: `POST /api/logger` with `transaction: "set_location"`, `name: "location"`, `value: "Building A, Room 101"`, `source: "sensor-01"`
+2. Log data: `POST /api/logger` with `source: "sensor-01"` and any other transaction
+3. Retrieve: `GET /api/logger?source=sensor-01` - all entries will include `"location": "Building A, Room 101"`
 
 ## Endpoints
 
@@ -91,6 +105,7 @@ Retrieve log entries with optional filtering and pagination.
       "name": "temperature",
       "value": 23.5,
       "source": "sensor-01",
+      "location": "Building A, Room 101",
       "created_at": "2025-01-01T10:30:05"
     }
   ],
@@ -99,6 +114,8 @@ Retrieve log entries with optional filtering and pagination.
   "offset": 0
 }
 ```
+
+**Note:** The `location` field is automatically populated from the most recent `set_location` transaction for the device. If no location has been set, the field will be an empty string.
 
 **Examples:**
 
@@ -224,7 +241,13 @@ curl "http://localhost:8765/api/logger?source=server-01"
 
 ### Device Location Management
 
-The `set_location` transaction is used to set or update the location for a specific logging device.
+The `set_location` transaction is used to set or update the location for a specific logging device. Once a location is set, all subsequent log entries from that device will automatically include the location in the `location` field.
+
+**How Location Works:**
+1. Use `set_location` transaction to set a location for a device
+2. All future log entries from that device will automatically have the `location` field populated
+3. The location is stored in the CSV file and included in API responses
+4. You can update the location by creating a new `set_location` transaction (most recent one is used)
 
 **Transaction Fields:**
 - `transaction`: Must be `"set_location"`
@@ -245,6 +268,34 @@ curl -X POST http://localhost:8765/api/logger \
     "source": "sensor-01"
   }'
 
+# Now all subsequent entries from sensor-01 will include this location
+curl -X POST http://localhost:8765/api/logger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "datetime": "2025-01-01T10:35:00",
+    "transaction": "logging",
+    "name": "temperature",
+    "value": 23.5,
+    "source": "sensor-01"
+  }'
+
+# The response will include the location field:
+# {
+#   "success": true,
+#   "message": "Log entry created successfully",
+#   "id": 2
+# }
+# And when retrieving, the entry will have:
+# {
+#   "id": 2,
+#   "transaction": "logging",
+#   "name": "temperature",
+#   "value": "23.5",
+#   "source": "sensor-01",
+#   "location": "Building A, Room 101",
+#   ...
+# }
+
 # Update location for a device
 curl -X POST http://localhost:8765/api/logger \
   -H "Content-Type: application/json" \
@@ -256,11 +307,7 @@ curl -X POST http://localhost:8765/api/logger \
     "source": "sensor-01"
   }'
 
-# Retrieve location history for a device
-curl "http://localhost:8765/api/logger?source=sensor-01&transaction=set_location"
-
-# Or filter by transaction type
-curl "http://localhost:8765/api/logger?source=sensor-01&name=location"
+# All new entries from sensor-01 will now use "Building B, Room 205"
 ```
 
 **Response:**
@@ -279,6 +326,9 @@ curl "http://localhost:8765/api/logger?source=sensor-01&name=location"
 
 # Get the most recent location for a device
 curl "http://localhost:8765/api/logger?source=sensor-01&name=location&limit=1"
+
+# Get all entries for a device (will include location field)
+curl "http://localhost:8765/api/logger?source=sensor-01"
 ```
 
 ---
@@ -412,11 +462,21 @@ The logger stores data persistently in a CSV file (`logger.csv`) located in the 
 
 **CSV File Structure:**
 ```csv
-id,transaction,datetime,name,value,source,created_at
-1,logging,2025-01-01T10:30:00,temperature,23.5,sensor-01,2025-01-01T10:30:05
-2,logging,2025-01-01T10:31:00,humidity,65.2,sensor-01,2025-01-01T10:31:03
-3,set_location,2025-01-01T10:00:00,location,"Building A, Room 101",sensor-01,2025-01-01T10:00:02
+id,transaction,datetime,name,value,source,location,created_at
+1,logging,2025-01-01T10:30:00,temperature,23.5,sensor-01,"Building A, Room 101",2025-01-01T10:30:05
+2,logging,2025-01-01T10:31:00,humidity,65.2,sensor-01,"Building A, Room 101",2025-01-01T10:31:03
+3,set_location,2025-01-01T10:00:00,location,"Building A, Room 101",sensor-01,"Building A, Room 101",2025-01-01T10:00:02
 ```
+
+**CSV Columns:**
+- `id`: Unique identifier for the log entry
+- `transaction`: Transaction type (e.g., "logging", "set_location")
+- `datetime`: Timestamp of the logged event
+- `name`: Name identifier for the log entry
+- `value`: The logged value
+- `source`: Source/device identifier
+- `location`: Location of the measurement device (populated from `set_location` transactions)
+- `created_at`: Timestamp when the entry was created in the system
 
 **Considerations:**
 - Suitable for small to medium datasets (thousands to hundreds of thousands of entries)
@@ -436,9 +496,11 @@ id,transaction,datetime,name,value,source,created_at
 1. **Use ISO 8601 datetime format**: Always use `YYYY-MM-DDTHH:MM:SS` format
 2. **Consistent naming**: Use consistent names for similar log types
 3. **Source identification**: Use clear, unique source identifiers
-4. **Pagination**: Use limit/offset for large datasets
-5. **Filtering**: Filter by source or name to reduce data transfer
-6. **Regular cleanup**: Implement data retention policies for production
+4. **Set device locations**: Use `set_location` transactions to track where devices are located
+5. **Location updates**: Update device locations when devices are moved using new `set_location` transactions
+6. **Pagination**: Use limit/offset for large datasets
+7. **Filtering**: Filter by source or name to reduce data transfer
+8. **Regular cleanup**: Implement data retention policies for production
 
 ---
 

@@ -26,6 +26,7 @@ type LogEntry struct {
 	Name        string    `json:"name"`
 	Value       string    `json:"value"`
 	Source      string    `json:"source"`
+	Location    string    `json:"location"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -45,21 +46,58 @@ func NewLogger(filePath string) (*Logger, error) {
 }
 
 // initFile creates the CSV file with headers if it doesn't exist
+// If an old format file exists (7 fields), it removes it and creates a new one
 func (l *Logger) initFile() error {
-	if _, err := os.Stat(l.filePath); os.IsNotExist(err) {
-		file, err := os.Create(l.filePath)
-		if err != nil {
-			return fmt.Errorf("failed to create log file: %w", err)
-		}
-		defer file.Close()
-
-		writer := csv.NewWriter(file)
-		headers := []string{"id", "transaction", "datetime", "name", "value", "source", "created_at"}
-		if err := writer.Write(headers); err != nil {
-			return fmt.Errorf("failed to write headers: %w", err)
-		}
-		writer.Flush()
+	_, err := os.Stat(l.filePath)
+	if os.IsNotExist(err) {
+		// File doesn't exist, create new one
+		return l.createNewFile()
 	}
+	if err != nil {
+		return fmt.Errorf("failed to check log file: %w", err)
+	}
+
+	// File exists, check if it's old format (7 fields) or new format (8 fields)
+	file, err := os.Open(l.filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	headers, err := reader.Read()
+	file.Close() // Close before potentially removing file
+	if err != nil {
+		// If we can't read headers, assume old format and recreate
+		os.Remove(l.filePath)
+		return l.createNewFile()
+	}
+
+	// Check if it's old format (7 fields) or new format (8 fields with location)
+	if len(headers) < 8 || (len(headers) >= 7 && headers[6] != "location") {
+		// Old format detected, remove and create new
+		os.Remove(l.filePath)
+		return l.createNewFile()
+	}
+
+	// New format file exists, nothing to do
+	return nil
+}
+
+// createNewFile creates a new CSV file with the correct headers
+func (l *Logger) createNewFile() error {
+	file, err := os.Create(l.filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create log file: %w", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	headers := []string{"id", "transaction", "datetime", "name", "value", "source", "location", "created_at"}
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("failed to write headers: %w", err)
+	}
+	writer.Flush()
 	return nil
 }
 
@@ -82,13 +120,14 @@ func (l *Logger) readAllEntries() ([]LogEntry, error) {
 		if i == 0 { // skip header
 			continue
 		}
-		if len(record) < 7 {
+		// New format requires 8 fields: id, transaction, datetime, name, value, source, location, created_at
+		if len(record) < 8 {
 			continue
 		}
 
 		id, _ := strconv.Atoi(record[0])
 		datetime, _ := time.Parse(time.RFC3339, record[2])
-		createdAt, _ := time.Parse(time.RFC3339, record[6])
+		createdAt, _ := time.Parse(time.RFC3339, record[7])
 
 		entries = append(entries, LogEntry{
 			ID:          id,
@@ -97,6 +136,7 @@ func (l *Logger) readAllEntries() ([]LogEntry, error) {
 			Name:        record[3],
 			Value:       record[4],
 			Source:      record[5],
+			Location:    record[6],
 			CreatedAt:   createdAt,
 		})
 	}
@@ -104,7 +144,7 @@ func (l *Logger) readAllEntries() ([]LogEntry, error) {
 }
 
 // AddEntry adds a new log entry
-func (l *Logger) AddEntry(datetime time.Time, transaction, name, value, source string) (int, error) {
+func (l *Logger) AddEntry(datetime time.Time, transaction, name, value, source, location string) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -138,6 +178,7 @@ func (l *Logger) AddEntry(datetime time.Time, transaction, name, value, source s
 		name,
 		value,
 		source,
+		location,
 		time.Now().Format(time.RFC3339),
 	}
 	if err := writer.Write(record); err != nil {
@@ -196,7 +237,7 @@ func (l *Logger) ClearEntries() error {
 	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	headers := []string{"id", "transaction", "datetime", "name", "value", "source", "created_at"}
+	headers := []string{"id", "transaction", "datetime", "name", "value", "source", "location", "created_at"}
 	if err := writer.Write(headers); err != nil {
 		return err
 	}
@@ -385,16 +426,17 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		valueStr = fmt.Sprintf("%v", v)
 	}
 
-	// Check for set_location transaction for this source
-	// If found, use the location value instead of the reported transaction
-	location, hasLocation := s.logger.GetLocationForSource(req.Source)
-	effectiveTransaction := req.Transaction
-	if hasLocation && req.Transaction != "set_location" {
-		// Use the location value instead of the reported transaction from the device
-		effectiveTransaction = location
+	// Determine location for this entry
+	var location string
+	if req.Transaction == "set_location" && req.Name == "location" {
+		// For set_location transactions, use the value as the location
+		location = valueStr
+	} else {
+		// For other transactions, check if there's a set_location for this source
+		location, _ = s.logger.GetLocationForSource(req.Source)
 	}
 
-	id, err := s.logger.AddEntry(dt, effectiveTransaction, req.Name, valueStr, req.Source)
+	id, err := s.logger.AddEntry(dt, req.Transaction, req.Name, valueStr, req.Source, location)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -403,20 +445,11 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
-	}
-
-	// Include original transaction and location info if location was used
-	if hasLocation && req.Transaction != "set_location" {
-		response["location"] = location
-		response["original_transaction"] = req.Transaction
-		response["transaction"] = effectiveTransaction
-	}
-
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 func (s *Server) getLogEntries(w http.ResponseWriter, r *http.Request) {
@@ -523,16 +556,17 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for set_location transaction for this source
-	// If found, use the location value instead of the reported transaction
-	location, hasLocation := s.logger.GetLocationForSource(source)
-	effectiveTransaction := transaction
-	if hasLocation && transaction != "set_location" {
-		// Use the location value instead of the reported transaction from the device
-		effectiveTransaction = location
+	// Determine location for this entry
+	var location string
+	if transaction == "set_location" && name == "location" {
+		// For set_location transactions, use the value as the location
+		location = value
+	} else {
+		// For other transactions, check if there's a set_location for this source
+		location, _ = s.logger.GetLocationForSource(source)
 	}
 
-	id, err := s.logger.AddEntry(time.Now(), effectiveTransaction, name, value, source)
+	id, err := s.logger.AddEntry(time.Now(), transaction, name, value, source, location)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -541,20 +575,11 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
-	}
-
-	// Include original transaction and location info if location was used
-	if hasLocation && transaction != "set_location" {
-		response["location"] = location
-		response["original_transaction"] = transaction
-		response["transaction"] = effectiveTransaction
-	}
-
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

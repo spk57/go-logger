@@ -141,6 +141,14 @@ RESPONSE=$(curl -s "${LOGGER_ENDPOINT}")
 if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "entries"; then
     TOTAL=$(echo "$RESPONSE" | grep -o '"total"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
     print_success "Retrieved entries. Total: $TOTAL"
+    
+    # Verify location field is present in entries
+    if echo "$RESPONSE" | grep -q "\"location\""; then
+        print_success "Location field present in retrieved entries"
+    else
+        print_failure "Location field missing from retrieved entries"
+    fi
+    
     echo "Response: $RESPONSE"
 else
     print_failure "Failed to retrieve entries"
@@ -348,9 +356,9 @@ else
     echo "Response: $RESPONSE"
 fi
 
-# Test 14: Verify location is used in subsequent log entries
-print_header "Test 14: Location Used in Log Entries"
-print_test "POST /api/logger - Log entry after set_location (should use location as transaction)"
+# Test 14: Verify location field is populated in subsequent log entries
+print_header "Test 14: Location Field in Log Entries"
+print_test "POST /api/logger - Log entry after set_location (should have location field)"
 
 RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     -H "Content-Type: application/json" \
@@ -363,32 +371,29 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    # Check if location is in the response
-    if echo "$RESPONSE" | grep -q "location" && echo "$RESPONSE" | grep -q "Building A, Room 101"; then
-        print_success "Location included in response"
-    else
-        print_failure "Location not found in response"
-    fi
-    # Check if original_transaction is present
-    if echo "$RESPONSE" | grep -q "original_transaction"; then
-        print_success "Original transaction preserved in response"
-    else
-        print_failure "Original transaction not found in response"
-    fi
+    ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
+    print_success "Log entry created with ID: $ENTRY_ID"
     echo "Response: $RESPONSE"
     
-    # Verify the entry was stored with location as transaction
-    ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_test "Verifying stored entry uses location as transaction"
-    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&limit=1")
-    if echo "$RETRIEVE_RESPONSE" | grep -q "Building A, Room 101"; then
-        print_success "Entry stored with location as transaction"
+    # Verify the entry was stored with location field
+    print_test "Verifying stored entry has location field populated"
+    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=temperature&limit=1")
+    if echo "$RETRIEVE_RESPONSE" | grep -q "\"location\"" && echo "$RETRIEVE_RESPONSE" | grep -q "Building A, Room 101"; then
+        print_success "Entry stored with location field populated"
     else
-        print_failure "Entry not stored with location as transaction"
+        print_failure "Entry location field not populated correctly"
+        echo "Retrieve response: $RETRIEVE_RESPONSE"
+    fi
+    
+    # Verify transaction is preserved (not replaced)
+    if echo "$RETRIEVE_RESPONSE" | grep -q "\"transaction\".*\"logging\""; then
+        print_success "Transaction field preserved (not replaced by location)"
+    else
+        print_failure "Transaction field not preserved"
         echo "Retrieve response: $RETRIEVE_RESPONSE"
     fi
 else
-    print_failure "Failed to create log entry with location"
+    print_failure "Failed to create log entry"
     echo "Response: $RESPONSE"
 fi
 
@@ -429,7 +434,7 @@ if check_response "$RESPONSE" "success" "true"; then
     echo "Response: $RESPONSE"
     
     # Verify new location is used in subsequent entries
-    print_test "POST /api/logger - Log entry after location update (should use new location)"
+    print_test "POST /api/logger - Log entry after location update (should have new location in field)"
     UPDATE_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
         -H "Content-Type: application/json" \
         -d '{
@@ -440,10 +445,17 @@ if check_response "$RESPONSE" "success" "true"; then
             "source": "sensor-03"
         }')
     
-    if echo "$UPDATE_RESPONSE" | grep -q "Building B, Room 205"; then
-        print_success "New location used in subsequent entry"
+    if check_response "$UPDATE_RESPONSE" "success" "true"; then
+        # Verify retrieved entry has new location
+        RETRIEVE_UPDATE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=humidity&limit=1")
+        if echo "$RETRIEVE_UPDATE" | grep -q "\"location\".*\"Building B, Room 205\""; then
+            print_success "New location field populated in subsequent entry"
+        else
+            print_failure "New location not in location field"
+            echo "Retrieve response: $RETRIEVE_UPDATE"
+        fi
     else
-        print_failure "New location not used"
+        print_failure "Failed to create entry after location update"
         echo "Response: $UPDATE_RESPONSE"
     fi
 else
@@ -470,7 +482,7 @@ if check_response "$RESPONSE" "success" "true"; then
     echo "Response: $RESPONSE"
     
     # Create log entry for sensor-04
-    print_test "POST /api/logger - Log entry for sensor-04 (should use its location)"
+    print_test "POST /api/logger - Log entry for sensor-04 (should have its location in field)"
     SENSOR4_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
         -H "Content-Type: application/json" \
         -d '{
@@ -481,15 +493,21 @@ if check_response "$RESPONSE" "success" "true"; then
             "source": "sensor-04"
         }')
     
-    if echo "$SENSOR4_RESPONSE" | grep -q "Warehouse Zone 3"; then
-        print_success "Sensor-04 uses its own location"
+    if check_response "$SENSOR4_RESPONSE" "success" "true"; then
+        RETRIEVE_S4=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-04&name=pressure&limit=1")
+        if echo "$RETRIEVE_S4" | grep -q "\"location\".*\"Warehouse Zone 3\""; then
+            print_success "Sensor-04 has its own location in location field"
+        else
+            print_failure "Sensor-04 location not in location field"
+            echo "Retrieve response: $RETRIEVE_S4"
+        fi
     else
-        print_failure "Sensor-04 location not used"
+        print_failure "Failed to create entry for sensor-04"
         echo "Response: $SENSOR4_RESPONSE"
     fi
     
     # Verify sensor-03 still uses its location
-    print_test "POST /api/logger - Log entry for sensor-03 (should still use Building B location)"
+    print_test "POST /api/logger - Log entry for sensor-03 (should have Building B location in field)"
     SENSOR3_RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
         -H "Content-Type: application/json" \
         -d '{
@@ -500,10 +518,16 @@ if check_response "$RESPONSE" "success" "true"; then
             "source": "sensor-03"
         }')
     
-    if echo "$SENSOR3_RESPONSE" | grep -q "Building B, Room 205"; then
-        print_success "Sensor-03 still uses its location (locations are device-specific)"
+    if check_response "$SENSOR3_RESPONSE" "success" "true"; then
+        RETRIEVE_S3=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=temperature&limit=1")
+        if echo "$RETRIEVE_S3" | grep -q "\"location\".*\"Building B, Room 205\""; then
+            print_success "Sensor-03 has its location in location field (locations are device-specific)"
+        else
+            print_failure "Sensor-03 location incorrect"
+            echo "Retrieve response: $RETRIEVE_S3"
+        fi
     else
-        print_failure "Sensor-03 location incorrect"
+        print_failure "Failed to create entry for sensor-03"
         echo "Response: $SENSOR3_RESPONSE"
     fi
 else
@@ -511,7 +535,7 @@ else
     echo "Response: $RESPONSE"
 fi
 
-# Test 18: Device without location uses original transaction
+# Test 18: Device without location has empty location field
 print_header "Test 18: Device Without Location"
 print_test "POST /api/logger - Log entry for device without set_location"
 
@@ -526,21 +550,32 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    # Should not have location field
-    if ! echo "$RESPONSE" | grep -q "location"; then
-        print_success "Device without location uses original transaction (no location field)"
-    else
-        print_failure "Location field present for device without set_location"
-    fi
+    ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
+    print_success "Log entry created with ID: $ENTRY_ID"
     echo "Response: $RESPONSE"
+    
+    # Verify location field exists but is empty
+    print_test "Verifying location field is empty for device without set_location"
+    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-05&name=voltage&limit=1")
+    if echo "$RETRIEVE_RESPONSE" | grep -q "\"location\""; then
+        if echo "$RETRIEVE_RESPONSE" | grep -q "\"location\"[[:space:]]*:[[:space:]]*\"\""; then
+            print_success "Location field present but empty for device without set_location"
+        else
+            print_failure "Location field has unexpected value"
+            echo "Retrieve response: $RETRIEVE_RESPONSE"
+        fi
+    else
+        print_failure "Location field missing from response"
+        echo "Retrieve response: $RETRIEVE_RESPONSE"
+    fi
 else
     print_failure "Failed to create log entry"
     echo "Response: $RESPONSE"
 fi
 
-# Test 19: set_location transaction itself should not be modified
-print_header "Test 19: Set Location Transaction Preservation"
-print_test "POST /api/logger - set_location transaction should not be modified"
+# Test 19: set_location transaction has location field set to its value
+print_header "Test 19: Set Location Transaction Location Field"
+print_test "POST /api/logger - set_location transaction should have location field set"
 
 RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     -H "Content-Type: application/json" \
@@ -553,21 +588,25 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    # set_location transactions should not have location field in response
-    if ! echo "$RESPONSE" | grep -q "\"location\""; then
-        print_success "set_location transaction preserved (not modified)"
-    else
-        print_failure "set_location transaction was modified"
-    fi
+    ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
+    print_success "set_location entry created with ID: $ENTRY_ID"
     echo "Response: $RESPONSE"
     
-    # Verify stored entry has transaction="set_location"
-    print_test "Verifying stored set_location entry"
-    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-06&name=location")
-    if echo "$RETRIEVE_RESPONSE" | grep -q "set_location"; then
+    # Verify stored entry has transaction="set_location" and location field set
+    print_test "Verifying stored set_location entry has location field"
+    RETRIEVE_RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-06&name=location&limit=1")
+    if echo "$RETRIEVE_RESPONSE" | grep -q "\"transaction\".*\"set_location\""; then
         print_success "set_location transaction stored correctly"
     else
         print_failure "set_location transaction not stored correctly"
+        echo "Retrieve response: $RETRIEVE_RESPONSE"
+    fi
+    
+    # Verify location field is set to the value
+    if echo "$RETRIEVE_RESPONSE" | grep -q "\"location\".*\"Test Location\""; then
+        print_success "Location field set to value in set_location entry"
+    else
+        print_failure "Location field not set correctly in set_location entry"
         echo "Retrieve response: $RETRIEVE_RESPONSE"
     fi
 else
