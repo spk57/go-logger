@@ -51,6 +51,8 @@ Create a new log entry.
 - `value` (required): Any value (number, string, boolean, etc.)
 - `source` (required): String identifying the source/origin
 
+**Note:** The `location` field is automatically populated from the most recent `set_location` transaction for the device. You do not need to include it in the request. If no location has been set for this device, the location will be an empty string.
+
 **Success Response (200 OK):**
 ```json
 {
@@ -391,6 +393,10 @@ client.log("humidity", 65.2, "sensor-01")
 entries = client.get_entries(source="sensor-01")
 print(f"Found {entries['total']} entries")
 
+# Access location field from entries
+for entry in entries['entries']:
+    print(f"Entry: {entry['name']} = {entry['value']} at {entry.get('location', 'unknown location')}")
+
 # Get stats
 stats = client.get_stats()
 print(f"Total entries: {stats['total_entries']}")
@@ -445,6 +451,12 @@ log_entry(client, "logging", "temperature", 23.5, "sensor-01")
 # Retrieve entries
 entries = get_entries(client, source="sensor-01")
 println("Found $(entries["total"]) entries")
+
+# Access location field from entries
+for entry in entries["entries"]
+    location = get(entry, "location", "unknown location")
+    println("Entry: $(entry["name"]) = $(entry["value"]) at $location")
+end
 ```
 
 ---

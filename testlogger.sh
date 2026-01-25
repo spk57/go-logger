@@ -513,13 +513,14 @@ if check_response "$RESPONSE" "success" "true"; then
         -d '{
             "datetime": "2025-01-15T11:36:00",
             "transaction": "logging",
-            "name": "temperature",
+            "name": "test_location_verify",
             "value": 21.0,
             "source": "sensor-03"
         }')
     
     if check_response "$SENSOR3_RESPONSE" "success" "true"; then
-        RETRIEVE_S3=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=temperature&limit=1")
+        # Use unique name to retrieve the specific entry we just created
+        RETRIEVE_S3=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=test_location_verify&limit=1")
         if echo "$RETRIEVE_S3" | grep -q "\"location\".*\"Building B, Room 205\""; then
             print_success "Sensor-03 has its location in location field (locations are device-specific)"
         else
