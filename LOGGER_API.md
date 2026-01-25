@@ -10,6 +10,7 @@ The API supports different transaction types to categorize log entries:
 
 - **`logging`**: Standard data logging (default for sensor readings, metrics, etc.)
 - **`set_location`**: Set or update the location for a logging device (see [Device Location Management](#device-location-management))
+- **`note`**: Log notes about changes in the environment for measurement devices (see [Note Transactions](#note-transactions))
 
 Transaction types are stored as part of each log entry and can be used to categorize and filter data. The transaction field is optional but recommended for better data organization.
 
@@ -46,12 +47,17 @@ Create a new log entry.
 
 **Request Fields:**
 - `datetime` (required): ISO 8601 formatted datetime string
-- `transaction` (optional): Transaction identifier (e.g., "logging", "set_location"). Defaults to empty string if not provided.
-- `name` (required): String identifier for the log entry
-- `value` (required): Any value (number, string, boolean, etc.)
+- `transaction` (optional): Transaction identifier (e.g., "logging", "set_location", "note"). Defaults to empty string if not provided.
+- `name` (required for non-note transactions): String identifier for the log entry
+- `value` (required for non-note transactions): Any value (number, string, boolean, etc.)
 - `source` (required): String identifying the source/origin
+- `note` (required for "note" transactions): Note content/text (see [Note Transactions](#note-transactions))
 
 **Note:** The `location` field is automatically populated from the most recent `set_location` transaction for the device. You do not need to include it in the request. If no location has been set for this device, the location will be an empty string.
+
+**Special Transaction Types:**
+- For `note` transactions: Use the `note` field instead of `name` and `value`
+- For `set_location` transactions: Use `name: "location"` and `value: "<location string>"`
 
 **Success Response (200 OK):**
 ```json
@@ -333,6 +339,76 @@ curl "http://localhost:8765/api/logger?source=sensor-01&name=location&limit=1"
 curl "http://localhost:8765/api/logger?source=sensor-01"
 ```
 
+### Note Transactions
+
+The `note` transaction allows you to log notes about changes in the environment for measurement devices. Notes are useful for documenting events, changes, or observations related to device operation.
+
+**Transaction Fields:**
+- `transaction`: Must be `"note"`
+- `note` (required): The note content/text
+- `source`: The device identifier (required)
+- `datetime`: Timestamp of when the note was created
+
+**Note:** For `note` transactions, the `note` field is required instead of `name` and `value`. The system automatically sets `name` to `"note"` and stores the note content in the `value` field.
+
+**Example:**
+```bash
+# Log a note about a device
+curl -X POST http://localhost:8765/api/logger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "datetime": "2025-01-15T14:30:00",
+    "transaction": "note",
+    "note": "Device moved to new location due to maintenance",
+    "source": "sensor-01"
+  }'
+
+# Log another note
+curl -X POST http://localhost:8765/api/logger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "datetime": "2025-01-15T15:00:00",
+    "transaction": "note",
+    "note": "Calibration performed - all readings verified",
+    "source": "sensor-01"
+  }'
+
+# Retrieve all notes for a device
+curl "http://localhost:8765/api/logger?source=sensor-01&transaction=note"
+
+# Or filter by name
+curl "http://localhost:8765/api/logger?source=sensor-01&name=note"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Log entry created successfully",
+  "id": 45
+}
+```
+
+**Retrieved Note Entry:**
+```json
+{
+  "id": 45,
+  "transaction": "note",
+  "datetime": "2025-01-15T14:30:00",
+  "name": "note",
+  "value": "Device moved to new location due to maintenance",
+  "source": "sensor-01",
+  "location": "Building A, Room 101",
+  "created_at": "2025-01-15T14:30:05"
+}
+```
+
+**Using Query Parameters:**
+```bash
+# Quick note via GET request
+curl "http://localhost:8765/quick?transaction=note&note=Device%20restarted&source=sensor-01"
+```
+
 ---
 
 ## Python Client Example
@@ -478,6 +554,7 @@ id,transaction,datetime,name,value,source,location,created_at
 1,logging,2025-01-01T10:30:00,temperature,23.5,sensor-01,"Building A, Room 101",2025-01-01T10:30:05
 2,logging,2025-01-01T10:31:00,humidity,65.2,sensor-01,"Building A, Room 101",2025-01-01T10:31:03
 3,set_location,2025-01-01T10:00:00,location,"Building A, Room 101",sensor-01,"Building A, Room 101",2025-01-01T10:00:02
+4,note,2025-01-01T11:00:00,note,"Device moved to new location",sensor-01,"Building A, Room 101",2025-01-01T11:00:05
 ```
 
 **CSV Columns:**

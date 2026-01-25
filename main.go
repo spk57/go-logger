@@ -327,6 +327,7 @@ type AddLogRequest struct {
 	Name        string      `json:"name"`
 	Value       interface{} `json:"value"` // accepts string, number, or other JSON types
 	Source      string      `json:"source"`
+	Note        string      `json:"note"` // Note content for "note" transactions
 }
 
 // enableCORS adds CORS headers to allow Arduino/ESP requests
@@ -376,6 +377,7 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		req.Source = r.URL.Query().Get("source")
 		req.Datetime = r.URL.Query().Get("datetime")
 		req.Transaction = r.URL.Query().Get("transaction")
+		req.Note = r.URL.Query().Get("note")
 	}
 
 	// Validate required fields
@@ -387,7 +389,20 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" {
+	// Handle note transaction - note field is required, name is set to "note"
+	if req.Transaction == "note" {
+		if req.Note == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": "missing required field: note",
+			})
+			return
+		}
+		// Set name to "note" and value to the note content
+		req.Name = "note"
+		req.Value = req.Note
+	} else if req.Name == "" {
+		// For non-note transactions, name is required
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"message": "missing required field: name",
@@ -547,8 +562,20 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 	value := query.Get("value")
 	source := query.Get("source")
 	transaction := query.Get("transaction")
+	note := query.Get("note")
 
-	if name == "" {
+	// Handle note transaction
+	if transaction == "note" {
+		if note == "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": "note parameter is required for note transactions",
+			})
+			return
+		}
+		name = "note"
+		value = note
+	} else if name == "" {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"message": "name parameter is required",
