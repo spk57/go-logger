@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	version     = "0.1.0"
 	logFile     = "logger.csv"
 	defaultPort = "8765"
 )
@@ -678,7 +679,7 @@ func main() {
 		host = "0.0.0.0" // Bind to all interfaces by default
 	}
 
-	fmt.Printf("🚀 Go Logger API Server starting on %s:%s\n", host, port)
+	fmt.Printf("🚀 Go Logger API Server v%s starting on %s:%s\n", version, host, port)
 	if debugMode {
 		fmt.Println("🔍 Debug mode: ENABLED (connection requests will be logged)")
 	}
