@@ -314,6 +314,7 @@ func (l *Logger) GetStats() (map[string]interface{}, error) {
 		"unique_names":   len(names),
 		"sources":        sources,
 		"names":          names,
+		"version":        version,
 	}, nil
 }
 
@@ -488,6 +489,7 @@ func (s *Server) addLogEntry(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
+		"version": version,
 	})
 }
 
@@ -526,6 +528,7 @@ func (s *Server) getLogEntries(w http.ResponseWriter, r *http.Request) {
 		"total":   total,
 		"limit":   limit,
 		"offset":  offset,
+		"version": version,
 	})
 }
 
@@ -541,6 +544,7 @@ func (s *Server) clearLogEntries(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "All log entries cleared",
+		"version": version,
 	})
 }
 
@@ -630,6 +634,7 @@ func (s *Server) handleQuickLog(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Log entry created successfully",
 		"id":      id,
+		"version": version,
 	})
 }
 
@@ -637,8 +642,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "ok",
-		"time":   time.Now().Format(time.RFC3339),
+		"status":  "ok",
+		"time":    time.Now().Format(time.RFC3339),
+		"version": version,
 	})
 }
 

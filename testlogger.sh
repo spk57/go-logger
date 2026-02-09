@@ -102,7 +102,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
 
 if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "id"; then
     ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "Created log entry with ID: $ENTRY_ID"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Created log entry with ID: $ENTRY_ID (version included)"
+    else
+        print_failure "Version field missing or incorrect"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Failed to create log entry"
@@ -124,7 +128,11 @@ for i in {1..3}; do
         }")
     
     if check_response "$RESPONSE" "success" "true"; then
-        print_success "Entry $i created"
+        if check_response "$RESPONSE" "version" "0.1.0"; then
+            print_success "Entry $i created (version included)"
+        else
+            print_failure "Entry $i created but version missing"
+        fi
         echo "Response: $RESPONSE"
     else
         print_failure "Entry $i failed"
@@ -140,7 +148,11 @@ RESPONSE=$(curl -s "${LOGGER_ENDPOINT}")
 
 if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "entries"; then
     TOTAL=$(echo "$RESPONSE" | grep -o '"total"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "Retrieved entries. Total: $TOTAL"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Retrieved entries. Total: $TOTAL (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     
     # Verify location field is present in entries
     if echo "$RESPONSE" | grep -q "\"location\""; then
@@ -176,7 +188,11 @@ print_test "GET /api/logger?source=sensor-01"
 RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-01")
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Filter by source working"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Filter by source working (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     # Verify all entries have correct source
     if echo "$RESPONSE" | grep -q "sensor-01"; then
@@ -194,7 +210,11 @@ print_test "GET /api/logger?name=temperature"
 RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?name=temperature")
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Filter by name working"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Filter by name working (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Filter by name failed"
@@ -208,7 +228,11 @@ print_test "GET /api/logger?source=sensor-02&name=humidity&limit=10"
 RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-02&name=humidity&limit=10")
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Combined filters working"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Combined filters working (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Combined filters failed"
@@ -222,7 +246,11 @@ print_test "GET /api/logger/stats"
 RESPONSE=$(curl -s "${STATS_ENDPOINT}")
 
 if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "total_entries"; then
-    print_success "Statistics retrieved"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Statistics retrieved (version included)"
+    else
+        print_failure "Version field missing from statistics response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Failed to get statistics"
@@ -306,7 +334,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "String value accepted"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "String value accepted (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "String value rejected"
@@ -326,7 +358,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Integer value accepted"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Integer value accepted (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Integer value rejected"
@@ -349,7 +385,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
 
 if check_response "$RESPONSE" "success" "true" && check_response "$RESPONSE" "id"; then
     LOCATION_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "Location set with ID: $LOCATION_ID"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Location set with ID: $LOCATION_ID (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
 else
     print_failure "Failed to set location"
@@ -372,7 +412,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
 
 if check_response "$RESPONSE" "success" "true"; then
     ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "Log entry created with ID: $ENTRY_ID"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Log entry created with ID: $ENTRY_ID (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     
     # Verify the entry was stored with location field
@@ -404,10 +448,14 @@ print_test "GET /api/logger?source=sensor-03&name=location"
 RESPONSE=$(curl -s "${LOGGER_ENDPOINT}?source=sensor-03&name=location")
 
 if check_response "$RESPONSE" "success" "true"; then
-    if echo "$RESPONSE" | grep -q "set_location" && echo "$RESPONSE" | grep -q "Building A, Room 101"; then
-        print_success "Location entries retrieved successfully"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        if echo "$RESPONSE" | grep -q "set_location" && echo "$RESPONSE" | grep -q "Building A, Room 101"; then
+            print_success "Location entries retrieved successfully (version included)"
+        else
+            print_failure "Location entries not found"
+        fi
     else
-        print_failure "Location entries not found"
+        print_failure "Version field missing from response"
     fi
     echo "Response: $RESPONSE"
 else
@@ -430,7 +478,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Location updated"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Location updated (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     
     # Verify new location is used in subsequent entries
@@ -478,7 +530,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
     }')
 
 if check_response "$RESPONSE" "success" "true"; then
-    print_success "Location set for sensor-04"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Location set for sensor-04 (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     
     # Create log entry for sensor-04
@@ -552,7 +608,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
 
 if check_response "$RESPONSE" "success" "true"; then
     ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "Log entry created with ID: $ENTRY_ID"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "Log entry created with ID: $ENTRY_ID (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     
     # Verify location field exists but is empty
@@ -590,7 +650,11 @@ RESPONSE=$(curl -s -X POST "${LOGGER_ENDPOINT}" \
 
 if check_response "$RESPONSE" "success" "true"; then
     ENTRY_ID=$(echo "$RESPONSE" | grep -o '"id"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*')
-    print_success "set_location entry created with ID: $ENTRY_ID"
+    if check_response "$RESPONSE" "version" "0.1.0"; then
+        print_success "set_location entry created with ID: $ENTRY_ID (version included)"
+    else
+        print_failure "Version field missing from response"
+    fi
     echo "Response: $RESPONSE"
     
     # Verify stored entry has transaction="set_location" and location field set

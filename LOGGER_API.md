@@ -1,8 +1,12 @@
 # Logger API Documentation
 
+**Version:** 0.1.0
+
 ## Overview
 
 The Logger API provides endpoints for storing and retrieving time-series log data with metadata. Each log entry contains a timestamp, transaction identifier, name, value, source identifier, and location. The location field is automatically populated from `set_location` transactions when available.
+
+All API responses include a `version` field indicating the API version (currently 0.1.0).
 
 ## Transaction Types
 
@@ -59,12 +63,16 @@ Create a new log entry.
 - For `note` transactions: Use the `note` field instead of `name` and `value`
 - For `set_location` transactions: Use `name: "location"` and `value: "<location string>"`
 
+**Response Fields:**
+All successful API responses include a `version` field indicating the API version (currently "0.1.0"). This helps clients verify they're communicating with a compatible API version.
+
 **Success Response (200 OK):**
 ```json
 {
   "success": true,
   "message": "Log entry created successfully",
-  "id": 1
+  "id": 1,
+  "version": "0.1.0"
 }
 ```
 
@@ -119,7 +127,8 @@ Retrieve log entries with optional filtering and pagination.
   ],
   "total": 1,
   "limit": 100,
-  "offset": 0
+  "offset": 0,
+  "version": "0.1.0"
 }
 ```
 
@@ -166,7 +175,8 @@ Get statistics about logged entries.
   "unique_sources": 5,
   "unique_names": 10,
   "sources": ["sensor-01", "sensor-02", "api", "manual", "system"],
-  "names": ["temperature", "humidity", "pressure", "status", ...]
+  "names": ["temperature", "humidity", "pressure", "status", ...],
+  "version": "0.1.0"
 }
 ```
 
@@ -323,7 +333,8 @@ curl -X POST http://localhost:8765/api/logger \
 {
   "success": true,
   "message": "Log entry created successfully",
-  "id": 42
+  "id": 42,
+  "version": "0.1.0"
 }
 ```
 
@@ -385,7 +396,8 @@ curl "http://localhost:8765/api/logger?source=sensor-01&name=note"
 {
   "success": true,
   "message": "Log entry created successfully",
-  "id": 45
+  "id": 45,
+  "version": "0.1.0"
 }
 ```
 

@@ -1,6 +1,10 @@
 # Go Logger API
 
+**Version:** 0.1.0
+
 A lightweight HTTP API server for logging data entries from Arduino and other remote devices. This is a Go port of the Julia `logger.jl` API.
+
+All API responses include a `version` field indicating the API version (currently 0.1.0).
 
 ## Features
 
@@ -85,9 +89,12 @@ Response:
 {
   "success": true,
   "message": "Log entry created successfully",
-  "id": 1
+  "id": 1,
+  "version": "0.1.0"
 }
 ```
+
+**Note:** All API responses include a `version` field indicating the API version. This helps clients verify they're communicating with a compatible API version.
 
 ### Get Log Entries
 
@@ -118,12 +125,14 @@ Response:
       "name": "temperature",
       "value": "23.5",
       "source": "arduino-1",
+      "location": "",
       "created_at": "2026-01-12T10:30:00Z"
     }
   ],
   "total": 1,
   "limit": 100,
-  "offset": 0
+  "offset": 0,
+  "version": "0.1.0"
 }
 ```
 
@@ -143,7 +152,8 @@ Response:
   "unique_sources": 3,
   "unique_names": 5,
   "sources": ["arduino-1", "arduino-2", "esp32"],
-  "names": ["temperature", "humidity", "pressure", "voltage", "light"]
+  "names": ["temperature", "humidity", "pressure", "voltage", "light"],
+  "version": "0.1.0"
 }
 ```
 
@@ -155,12 +165,30 @@ Response:
 curl -X DELETE http://localhost:8765/log
 ```
 
+Response:
+```json
+{
+  "success": true,
+  "message": "All log entries cleared",
+  "version": "0.1.0"
+}
+```
+
 ### Health Check
 
 **GET /health**
 
 ```bash
 curl http://localhost:8765/health
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "time": "2026-01-24T15:30:45Z",
+  "version": "0.1.0"
+}
 ```
 
 ## Arduino Example (ESP8266/ESP32)
@@ -204,10 +232,12 @@ Data is stored in CSV format with the following columns:
 | Column | Description |
 |--------|-------------|
 | id | Auto-incrementing entry ID |
+| transaction | Transaction type (e.g., "logging", "set_location", "note") |
 | datetime | Timestamp of the measurement |
 | name | Measurement name (e.g., "temperature") |
 | value | Measured value |
 | source | Device identifier |
+| location | Location of the measurement device (populated from `set_location` transactions) |
 | created_at | When the entry was created on the server |
 
 ## Troubleshooting Remote Connections
