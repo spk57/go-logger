@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,6 +17,10 @@ import (
 const (
 	logFile     = "logger.csv"
 	defaultPort = "8765"
+)
+
+var (
+	debugMode = false
 )
 
 // LogEntry represents a single log entry
@@ -337,6 +342,24 @@ func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
+// debugLog logs connection requests when debug mode is enabled
+func debugLog(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if debugMode {
+			timestamp := time.Now().Format("2006-01-02 15:04:05")
+			fmt.Printf("[DEBUG] %s - %s %s from %s\n", timestamp, r.Method, r.URL.Path, r.RemoteAddr)
+			if r.URL.RawQuery != "" {
+				fmt.Printf("[DEBUG]   Query: %s\n", r.URL.RawQuery)
+			}
+			if r.Method == "POST" || r.Method == "PUT" {
+				contentType := r.Header.Get("Content-Type")
+				fmt.Printf("[DEBUG]   Content-Type: %s\n", contentType)
+			}
+		}
+		handler(w, r)
+	}
+}
+
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -619,6 +642,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Parse command line flags
+	flag.BoolVar(&debugMode, "d", false, "Enable debug mode (log connection requests)")
+	flag.Parse()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -636,13 +663,14 @@ func main() {
 
 	server := NewServer(logger)
 
-	http.HandleFunc("/log", server.handleLog)
-	http.HandleFunc("/logs", server.handleLog)
-	http.HandleFunc("/api/logger", server.handleLog)
-	http.HandleFunc("/api/logger/stats", server.handleStats)
-	http.HandleFunc("/stats", server.handleStats)
-	http.HandleFunc("/quick", server.handleQuickLog)
-	http.HandleFunc("/health", server.handleHealth)
+	// Register handlers with debug logging wrapper
+	http.HandleFunc("/log", debugLog(server.handleLog))
+	http.HandleFunc("/logs", debugLog(server.handleLog))
+	http.HandleFunc("/api/logger", debugLog(server.handleLog))
+	http.HandleFunc("/api/logger/stats", debugLog(server.handleStats))
+	http.HandleFunc("/stats", debugLog(server.handleStats))
+	http.HandleFunc("/quick", debugLog(server.handleQuickLog))
+	http.HandleFunc("/health", debugLog(server.handleHealth))
 
 	// Get local IP addresses for remote access info
 	host := os.Getenv("HOST")
@@ -651,6 +679,9 @@ func main() {
 	}
 
 	fmt.Printf("🚀 Go Logger API Server starting on %s:%s\n", host, port)
+	if debugMode {
+		fmt.Println("🔍 Debug mode: ENABLED (connection requests will be logged)")
+	}
 	fmt.Println("Endpoints:")
 	fmt.Println("  POST   /api/logger       - Add a log entry (JSON body)")
 	fmt.Println("  GET    /api/logger       - Get log entries (with ?limit, ?offset, ?source, ?name filters)")
@@ -662,6 +693,7 @@ func main() {
 	fmt.Println("  GET    /stats            - Get log statistics")
 	fmt.Println("  GET    /quick            - Quick log entry (query params: name, value, source)")
 	fmt.Println("  GET    /health           - Health check")
+	fmt.Println("\nUsage: ./main [-d] to enable debug mode")
 
 	// Display network information for remote access
 	if host == "0.0.0.0" || host == "" {

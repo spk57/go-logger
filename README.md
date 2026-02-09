@@ -28,7 +28,41 @@ PORT=3000 ./logger-server
 
 # Custom log file path
 LOG_FILE=/path/to/logs.csv ./logger-server
+
+# Enable debug mode (logs all connection requests)
+./logger-server -d
+
+# Combine options
+PORT=3000 LOG_FILE=/path/to/logs.csv ./logger-server -d
 ```
+
+### Debug Mode
+
+Use the `-d` flag to enable debug mode, which logs all incoming connection requests to the console. This is helpful for troubleshooting connection issues with remote clients.
+
+**Debug output includes:**
+- Timestamp of each request
+- HTTP method (GET, POST, etc.)
+- URL path
+- Client IP address and port
+- Query parameters (if any)
+- Content-Type header (for POST/PUT requests)
+
+**Example debug output:**
+```
+[DEBUG] 2025-01-24 15:30:45 - GET /api/logger from 192.168.1.100:52341
+[DEBUG]   Query: source=sensor-01&limit=10
+
+[DEBUG] 2025-01-24 15:30:50 - POST /api/logger from 192.168.1.100:52342
+[DEBUG]   Content-Type: application/json
+```
+
+**When to use debug mode:**
+- Troubleshooting why clients can't connect
+- Verifying which endpoints clients are hitting
+- Checking what parameters are being sent
+- Monitoring connection patterns
+- Diagnosing network connectivity issues
 
 ## API Endpoints
 
@@ -180,6 +214,21 @@ Data is stored in CSV format with the following columns:
 
 If local `curl` commands work but remote Arduino clients cannot connect:
 
+### Enable Debug Mode
+
+Start the server with debug mode to see all connection attempts:
+```bash
+./logger-server -d
+```
+
+This will show you:
+- Which clients are trying to connect
+- What endpoints they're accessing
+- What parameters they're sending
+- When connection attempts occur
+
+If you don't see any debug output when a client tries to connect, the request isn't reaching the server (likely a network/firewall issue).
+
 ### Quick Diagnostic
 
 Run the network diagnostic script:
@@ -207,5 +256,16 @@ This will check:
 3. **Server not binding to all interfaces**
    - The server binds to `0.0.0.0` by default
    - Explicitly set: `HOST=0.0.0.0 ./logger-server`
+
+4. **No connection attempts visible in debug mode**
+   - If debug mode shows no output when clients try to connect, the requests aren't reaching the server
+   - Check firewall rules, network routing, and that the client is using the correct IP address
+   - Verify the server is listening on the expected interface: `netstat -tuln | grep 8765`
+
+5. **Connection attempts visible but failing**
+   - If debug mode shows connection attempts but they fail, check:
+     - Server logs for error messages
+     - Request format (method, headers, body)
+     - CORS issues (though CORS is enabled by default)
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for detailed troubleshooting steps.

@@ -112,14 +112,45 @@ Some routers block incoming connections. If Arduino is on a different network:
 - Use port forwarding on the router
 - Or ensure both devices are on the same local network
 
-## 7. Check Server Logs
+## 7. Enable Debug Mode
+
+Start the server with debug mode enabled to see all connection attempts in real-time:
+
+```bash
+./logger-server -d
+```
+
+Debug mode will show:
+- Timestamp of each request
+- HTTP method (GET, POST, etc.)
+- URL path being accessed
+- Client IP address and port
+- Query parameters (if any)
+- Content-Type header (for POST/PUT requests)
+
+**Example debug output:**
+```
+[DEBUG] 2025-01-24 15:30:45 - GET /api/logger from 192.168.1.100:52341
+[DEBUG]   Query: source=sensor-01&limit=10
+
+[DEBUG] 2025-01-24 15:30:50 - POST /api/logger from 192.168.1.100:52342
+[DEBUG]   Content-Type: application/json
+```
+
+**Using debug mode to diagnose issues:**
+- **No debug output when client tries to connect**: Request isn't reaching the server (firewall/network issue)
+- **Debug output shows connection but fails**: Server-side issue (check request format, headers, body)
+- **Debug output shows wrong endpoint**: Client configuration issue (wrong URL in Arduino code)
+- **Debug output shows connection from wrong IP**: Network routing issue or wrong server IP configured
+
+## 8. Check Server Logs
 
 The server should show connection attempts. Look for:
 - Connection errors
-- Request logs
+- Request logs (especially with debug mode enabled)
 - Any error messages
 
-## 8. Test with Health Endpoint
+## 9. Test with Health Endpoint
 
 Test basic connectivity first:
 
@@ -130,7 +161,7 @@ curl http://<server-ip>:8765/health
 
 This simpler endpoint helps isolate HTTP vs. endpoint-specific issues.
 
-## 9. Common Arduino Issues
+## 10. Common Arduino Issues
 
 ### Wrong URL
 - ❌ `http://localhost:8765/log` (won't work from remote)
@@ -147,7 +178,7 @@ This simpler endpoint helps isolate HTTP vs. endpoint-specific issues.
 - Try increasing timeout values
 - Check for library-specific connection requirements
 
-## 10. Quick Diagnostic Checklist
+## 11. Quick Diagnostic Checklist
 
 - [ ] Server is running (`ps aux | grep logger-server`)
 - [ ] Server is listening on `0.0.0.0:8765` (not `127.0.0.1:8765`)
@@ -155,17 +186,20 @@ This simpler endpoint helps isolate HTTP vs. endpoint-specific issues.
 - [ ] Arduino uses correct server IP (not localhost)
 - [ ] Arduino and server are on same network
 - [ ] Can connect from another machine on network
-- [ ] Server logs show connection attempts
+- [ ] Debug mode enabled (`./logger-server -d`) shows connection attempts
+- [ ] Server logs show connection attempts (check debug output)
 - [ ] Arduino WiFi is connected
 - [ ] Arduino code has correct URL
 
 ## Getting Help
 
 If issues persist, collect:
-1. Server startup logs
-2. `netstat` or `ss` output showing listening ports
-3. Firewall status
-4. Server IP address
-5. Arduino IP address
-6. Network topology (same subnet?)
-7. Any error messages from Arduino serial output
+1. Server startup logs (with debug mode enabled: `./logger-server -d`)
+2. Debug output showing connection attempts (or lack thereof)
+3. `netstat` or `ss` output showing listening ports
+4. Firewall status
+5. Server IP address
+6. Arduino IP address
+7. Network topology (same subnet?)
+8. Any error messages from Arduino serial output
+9. Debug mode output when client attempts to connect
